@@ -134,7 +134,7 @@ load("/Users/lucasdegreve/Data/RData/brt_results/df_brt_nest_scale_list_brt_resu
 
 extract_auc_summary <- function(brt_list) {
   auc_values <- sapply(brt_list, function(brt_model) brt_model$cv.statistics$discrimination.mean)
-  auc_summary <- c(mean(auc_values), min(auc_values), max(auc_values))
+  auc_summary <- c(mean = mean(auc_values), min = min(auc_values), max = max(auc_values), sd = sd(auc_values))
   return(auc_summary)
 }
 
@@ -148,10 +148,12 @@ auc_brt_nest_scale <- extract_auc_summary(df_brt_nest_scale_list_brt_results)
 auc_table <- data.frame(
   Model = c("feed_30m", "feed_scale", "hunt_30m", "hunt_scale", "nest_30m", "nest_scale"),
   Mean = c(auc_brt_feed_30m[1], auc_brt_feed_scale[1], auc_brt_hunt_30m[1], auc_brt_hunt_scale[1], auc_brt_nest_30m[1], auc_brt_nest_scale[1]),
-  Min = c(auc_brt_feed_30m[2], auc_brt_feed_scale[2], auc_brt_hunt_30m[2], auc_brt_hunt_scale[2], auc_brt_nest_30m[2], auc_brt_nest_scale[2]),
-  Max = c(auc_brt_feed_30m[3], auc_brt_feed_scale[3], auc_brt_hunt_30m[3], auc_brt_hunt_scale[3], auc_brt_nest_30m[3], auc_brt_nest_scale[3])
+  Min  = c(auc_brt_feed_30m[2], auc_brt_feed_scale[2], auc_brt_hunt_30m[2], auc_brt_hunt_scale[2], auc_brt_nest_30m[2], auc_brt_nest_scale[2]),
+  Max  = c(auc_brt_feed_30m[3], auc_brt_feed_scale[3], auc_brt_hunt_30m[3], auc_brt_hunt_scale[3], auc_brt_nest_30m[3], auc_brt_nest_scale[3]),
+  SD   = c(auc_brt_feed_30m[4], auc_brt_feed_scale[4], auc_brt_hunt_30m[4], auc_brt_hunt_scale[4], auc_brt_nest_30m[4], auc_brt_nest_scale[4])
 )
-write.xlsx(auc_table, file = "brt_auc.xlsx", sheetName = "BRT AUC", colNames = TRUE, rowNames = TRUE)
+
+write.xlsx(auc_table, file = "brt_auc.xlsx", sheetName = "BRT AUC", colNames = TRUE, rowNames = FALSE)
 
 ###############################################################################
 ############################# Relative Influences #############################
@@ -411,7 +413,9 @@ process_model <- function(model_name, prediction_df, pa_list) {
     max_si_df[i, ] <- c(i, max_si)
   }
   si_means <- mean(max_si_df$Max_SI, na.rm = TRUE)
+  si_sd <- sd(max_si_df$Max_SI, na.rm = TRUE)
   print(paste("Mean Sorensen Index for", model_name, ":", si_means))
+  print(paste("SD of Sorensen Index for", model_name, ":", si_sd))
   write.xlsx(data_comp, file = paste0("data_comp_", model_name, ".xlsx"), sheetName = paste("Sorensen", model_name), colNames = TRUE, rowNames = TRUE)
 }
 
