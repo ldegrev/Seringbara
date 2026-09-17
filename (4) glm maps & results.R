@@ -652,6 +652,113 @@ for (model_name in names(models)) {
 }
 
 ###############################################################################
+#################### GLM: AICc Weights, Coefficients & 95% CI ################
+###############################################################################
+
+library(MuMIn)
+library(openxlsx)
+
+# Load all avg_lists if not already in memory
+load("/Users/lucasdegreve/Data/RData/glm_avg_list/avg_list_feed_30m.RData")
+load("/Users/lucasdegreve/Data/RData/glm_avg_list/avg_list_feed_scale.RData")
+load("/Users/lucasdegreve/Data/RData/glm_avg_list/avg_list_hunt_30m.RData")
+load("/Users/lucasdegreve/Data/RData/glm_avg_list/avg_list_hunt_scale.RData")
+load("/Users/lucasdegreve/Data/RData/glm_avg_list/avg_list_nest_30m.RData")
+load("/Users/lucasdegreve/Data/RData/glm_avg_list/avg_list_nest_scale.RData")
+
+# Load all dredge results if not already in memory
+load("/Users/lucasdegreve/Data/RData/glm_results/df_glm_feed_30m_list85_dredge_results.RData")
+load("/Users/lucasdegreve/Data/RData/glm_results/df_glm_feed_scale_list85_dredge_results.RData")
+load("/Users/lucasdegreve/Data/RData/glm_results/df_glm_hunt_30m_list85_dredge_results.RData")
+load("/Users/lucasdegreve/Data/RData/glm_results/df_glm_hunt_scale_list85_dredge_results.RData")
+load("/Users/lucasdegreve/Data/RData/glm_results/df_glm_nest_30m_list85_dredge_results.RData")
+load("/Users/lucasdegreve/Data/RData/glm_results/df_glm_nest_scale_list85_dredge_results.RData")
+
+avg_lists <- list(
+  feed_30m    = avg_list_feed_30m,
+  feed_scale  = avg_list_feed_scale,
+  hunt_30m    = avg_list_hunt_30m,
+  hunt_scale  = avg_list_hunt_scale,
+  nest_30m    = avg_list_nest_30m,
+  nest_scale  = avg_list_nest_scale
+)
+
+dredge_lists <- list(
+  feed_30m    = df_glm_feed_30m_list85_dredge_results,
+  feed_scale  = df_glm_feed_scale_list85_dredge_results,
+  hunt_30m    = df_glm_hunt_30m_list85_dredge_results,
+  hunt_scale  = df_glm_hunt_scale_list85_dredge_results,
+  nest_30m    = df_glm_nest_30m_list85_dredge_results,
+  nest_scale  = df_glm_nest_scale_list85_dredge_results
+)
+
+for (model_name in names(avg_lists)) {
+  cat("Processing:", model_name, "\n")
+  avg_list    <- avg_lists[[model_name]]
+  dredge_list <- dredge_lists[[model_name]]
+  
+  # --- 1. Conditional model-averaged coefficients and 95% CI ---
+  # Using coefmat.subset and full=FALSE to match original manuscript Tables S7-S12
+  coef_all <- list()
+  ci_all   <- list()
+  
+  for (i in 1:100) {
+    avg          <- avg_list[[i]]
+    coef_all[[i]] <- summary(avg)$coefmat.subset
+    ci_all[[i]]   <- confint(avg, full = FALSE)
+  }
+  
+  all_vars <- unique(unlist(lapply(coef_all, rownames)))
+  
+  results_coef <- do.call(rbind, lapply(all_vars, function(v) {
+    ests  <- sapply(coef_all, function(m) if (v %in% rownames(m)) m[v, "Estimate"]   else NA)
+    ses   <- sapply(coef_all, function(m) if (v %in% rownames(m)) m[v, "Std. Error"] else NA)
+    ci_lo <- sapply(ci_all,   function(c) if (v %in% rownames(c)) c[v, 1]            else NA)
+    ci_hi <- sapply(ci_all,   function(c) if (v %in% rownames(c)) c[v, 2]            else NA)
+    data.frame(
+      Variable       = v,
+      Estimate       = mean(ests,  na.rm = TRUE),
+      SE             = mean(ses,   na.rm = TRUE),
+      CI_2.5pct      = mean(ci_lo, na.rm = TRUE),
+      CI_97.5pct     = mean(ci_hi, na.rm = TRUE),
+      N_runs_present = sum(!is.na(ests))
+    )
+  }))
+  
+  # --- 2. Relative variable importance (sum of AICc weights) ---
+  importance_all <- list()
+  
+  for (i in 1:100) {
+    imp <- sw(dredge_list[[i]])
+    importance_all[[i]] <- as.data.frame(t(as.numeric(imp)))
+    colnames(importance_all[[i]]) <- names(imp)
+  }
+  
+  all_imp_vars <- unique(unlist(lapply(importance_all, names)))
+  imp_mean <- sapply(all_imp_vars, function(v) {
+    vals <- sapply(importance_all, function(d) if (v %in% names(d)) d[[v]] else NA)
+    mean(vals, na.rm = TRUE)
+  })
+  
+  results_imp <- data.frame(
+    Variable   = names(imp_mean),
+    Importance = as.numeric(imp_mean)
+  )
+  
+  # --- 3. Merge and sort by Importance ---
+  results_final <- merge(results_coef, results_imp, by = "Variable", all.x = TRUE)
+  results_final <- results_final[order(-results_final$Importance), ]
+  
+  write.xlsx(results_final,
+             file      = paste0("glm_coef_ci_importance_", model_name, ".xlsx"),
+             sheetName = paste("GLM", model_name),
+             colNames  = TRUE, rowNames = FALSE)
+  
+  cat("  Saved: glm_coef_ci_importance_", model_name, ".xlsx\n")
+}
+
+
+###############################################################################
 ################################ BRT R squared ################################
 ###############################################################################
 

@@ -156,6 +156,99 @@ auc_table <- data.frame(
 write.xlsx(auc_table, file = "brt_auc.xlsx", sheetName = "BRT AUC", colNames = TRUE, rowNames = FALSE)
 
 ###############################################################################
+################### BRT: Spatial Autocorrelation Correlogram #################
+###############################################################################
+
+library(ncf)
+library(gbm)
+library(openxlsx)
+
+load("/Users/lucasdegreve/Data/RData/brt_results/df_brt_feed_30m_list_brt_results.RData")
+load("/Users/lucasdegreve/Data/RData/brt_results/df_brt_feed_scale_list_brt_results.RData")
+load("/Users/lucasdegreve/Data/RData/brt_results/df_brt_hunt_30m_list_brt_results.RData")
+load("/Users/lucasdegreve/Data/RData/brt_results/df_brt_hunt_scale_list_brt_results.RData")
+load("/Users/lucasdegreve/Data/RData/brt_results/df_brt_nest_30m_list_brt_results.RData")
+load("/Users/lucasdegreve/Data/RData/brt_results/df_brt_nest_scale_list_brt_results.RData")
+
+load("/Users/lucasdegreve/Data/RData/df_brt/df_brt_feed_30m_list.RData")
+load("/Users/lucasdegreve/Data/RData/df_brt/df_brt_feed_scale_list.RData")
+load("/Users/lucasdegreve/Data/RData/df_brt/df_brt_hunt_30m_list.RData")
+load("/Users/lucasdegreve/Data/RData/df_brt/df_brt_hunt_scale_list.RData")
+load("/Users/lucasdegreve/Data/RData/df_brt/df_brt_nest_30m_list.RData")
+load("/Users/lucasdegreve/Data/RData/df_brt/df_brt_nest_scale_list.RData")
+
+brt_model_sets <- list(
+  feed_30m    = list(results = df_brt_feed_30m_list_brt_results,   data = df_brt_feed_30m_list),
+  feed_scale  = list(results = df_brt_feed_scale_list_brt_results, data = df_brt_feed_scale_list),
+  hunt_30m    = list(results = df_brt_hunt_30m_list_brt_results,   data = df_brt_hunt_30m_list),
+  hunt_scale  = list(results = df_brt_hunt_scale_list_brt_results, data = df_brt_hunt_scale_list),
+  nest_30m    = list(results = df_brt_nest_30m_list_brt_results,   data = df_brt_nest_30m_list),
+  nest_scale  = list(results = df_brt_nest_scale_list_brt_results, data = df_brt_nest_scale_list)
+)
+
+correlogram_results <- data.frame(
+  Model             = character(),
+  Zero_crossing_m   = numeric(),
+  stringsAsFactors  = FALSE
+)
+
+for (model_name in names(brt_model_sets)) {
+  
+  cat("Computing correlogram for:", model_name, "\n")
+  
+  # Use first run only (representative; full 100-run average is not needed)
+  brt_model <- brt_model_sets[[model_name]]$results[[1]]
+  data_i    <- brt_model_sets[[model_name]]$data[[1]]
+  
+  # Compute predictions and residuals
+  preds     <- predict.gbm(brt_model, data_i,
+                           brt_model$gbm.call$best.trees,
+                           type = "response", single.tree = FALSE)
+  residuals <- data_i$presence - preds
+  
+  # Correlogram: increment = 100 m, up to 5 km
+  # Adjust increment and resamp to your data density
+  corr <- correlog(
+    x         = data_i$x,
+    y         = data_i$y,
+    z         = residuals,
+    increment = 100,     # distance increment in metres
+    resamp    = 0,       # set to 99 for significance envelopes (slower)
+    quiet     = TRUE
+  )
+  
+  # Save the correlogram plot
+  pdf(paste0("correlogram_brt_", model_name, ".pdf"), width = 7, height = 5)
+  plot(corr$mean.of.class, corr$correlation,
+       type = "b", pch = 16, cex = 0.7,
+       xlab = "Distance (m)", ylab = "Moran's I",
+       main = paste("Correlogram BRT residuals —", model_name))
+  abline(h = 0, lty = 2, col = "red")
+  dev.off()
+  
+  # Find first distance at which correlation crosses zero
+  zero_idx <- which(corr$correlation < 0)[1]
+  if (!is.na(zero_idx)) {
+    zero_dist <- corr$mean.of.class[zero_idx]
+    cat("  Zero crossing at ~", zero_dist, "m\n")
+  } else {
+    zero_dist <- NA
+    cat("  No zero crossing found within range\n")
+  }
+  
+  correlogram_results <- rbind(correlogram_results, data.frame(
+    Model           = model_name,
+    Zero_crossing_m = zero_dist
+  ))
+}
+
+print(correlogram_results)
+write.xlsx(correlogram_results,
+           file      = "correlogram_zero_crossings.xlsx",
+           sheetName = "Correlogram Results",
+           colNames  = TRUE, rowNames = FALSE)
+
+###############################################################################
 ############################# Relative Influences #############################
 ###############################################################################
 
